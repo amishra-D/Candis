@@ -1,5 +1,4 @@
-const DoublyLinkedList = require('../DS/DoublyLL');
-const Node = require('../DS/DoublyLL').Node;
+const { DoublyLinkedList, Node } = require('../DS/DoublyLL');
 class EvictionManager {
     constructor() {
         this.lruList = new DoublyLinkedList();

@@ -2,50 +2,76 @@ const StorageEngine = require('./StorageEngine');
 const ExpiryManager = require('./ExpiryManager');
 const EvictionManager = require('./EvictionManager');
 const CacheEntry = require('./CacheEntry');
+const MetricsManager = require('./MetricsManager');
 
 class CacheNode {
-   constructor(nodeId) {
+   constructor(nodeId, maxSize = 1000) {
       this.storage = new StorageEngine();
       this.expirymanager = new ExpiryManager();
       this.evictionmanager = new EvictionManager();
-      this.nodeId = nodeId
-      setInterval(()=>{
-      this.expirymanager
-          .removeExpiredKeys(this);
-   },1000);
+      this.nodeId = nodeId;
+      this.maxSize = maxSize;
+      this.metricsManager = new MetricsManager();
+      this.expiryInterval=setInterval(() => {
+         this.expirymanager
+            .removeExpiredKeys(this);
+      }, 1000);
    }
 
    get(key) {
-const entry = this.storage.get(key);
-   if(!entry) return null;
+      const entry = this.storage.get(key);
 
-   if(entry.expiryTime <= Date.now()){
-      this.delete(key);
-      return null;
-   }
+      if (!entry) {
+         this.metricsManager.recordMiss();
+         return null;
+      }
+
+      if (entry.expiryTime <= Date.now()) {
+         this.metricsManager.recordExpiration();
+         this.delete(key);
+         return null;
+      }
       if (entry) {
          this.evictionmanager.touch(key);
          entry.hits++;
+         this.metricsManager.recordHit();
       }
       return entry.value;
    }
-   set(key, value, ttl) {
-      const expiryTime = Date.now() + ttl;
+   set(key, value, ttl = null) {
 
-      const entry = new CacheEntry(
-         value,
-         expiryTime
-      );
+      const expiryTime =
+         ttl === null
+            ? Infinity
+            : Date.now() + ttl;
+      if (
+         !this.storage.get(key) &&
+         this.size() >= this.maxSize
+      ) {
+         const victim =
+            this.evictionmanager.evict();
 
+         if (victim) {
+            this.metricsManager.recordEviction();
+            this.delete(victim, false);
+         }
+      }
+      const entry =
+         new CacheEntry(value, expiryTime);
       this.storage.set(key, entry);
 
-      this.expirymanager.addExpiry(key, ttl);
-
+      if (ttl !== null) {
+         this.expirymanager.addExpiry(key, ttl);
+      }
       this.evictionmanager.addKey(key);
+      this.metricsManager.recordWrite();
    }
-   delete(key) {
+   delete(key, isUserDelete = true) {
       this.storage.delete(key);
 
+      if (isUserDelete) {
+         this.metricsManager.recordDelete();
+      }
       const node = this.evictionmanager.lruMap.get(key);
 
       if (node) {
@@ -56,6 +82,9 @@ const entry = this.storage.get(key);
    size() {
       return this.storage.size();
    }
+   shutdown() {
+   clearInterval(this.expiryInterval);
+}
 }
 
 module.exports = CacheNode;
