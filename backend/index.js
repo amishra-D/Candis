@@ -8,9 +8,17 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 })
-createCacheNodeServer('node1', 5001);
-createCacheNodeServer('node2', 5002);
-createCacheNodeServer('node3', 5003);
-createCacheNodeServer('node4', 5004);
-createCacheNodeServer('node5', 5005);
+const peers = [
+    { nodeId: 'node1', url: 'http://localhost:5001' },
+    { nodeId: 'node2', url: 'http://localhost:5002' },
+    { nodeId: 'node3', url: 'http://localhost:5003' },
+    { nodeId: 'node4', url: 'http://localhost:5004' },
+    { nodeId: 'node5', url: 'http://localhost:5005' }
+];
+
+createCacheNodeServer('node1', 5001, peers);
+createCacheNodeServer('node2', 5002, peers);
+createCacheNodeServer('node3', 5003, peers);
+createCacheNodeServer('node4', 5004, peers);
+createCacheNodeServer('node5', 5005, peers);
 

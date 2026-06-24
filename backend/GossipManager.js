@@ -1,13 +1,18 @@
+const Rebalancer = require('./Rebalancer');
+
 class GossipManager {
     constructor(distributedCache) {
         this.cache = distributedCache;
         this.deadNodes = new Set();
         this.missedBeats = new Map();
+        this.nodeMetrics = new Map();
+        this.nodeSizes = new Map();
         this.interval = null;
+        this.rebalancer = new Rebalancer(this.cache);
     }
 
     start() {
-        console.log(' Gossip protocol started...');
+        console.log(' Gossip protocol monitor started...');
         this.interval = setInterval(
             () => this.pingAllNodes(), 
             2000
@@ -17,27 +22,95 @@ class GossipManager {
     stop() {
         if (this.interval) {
             clearInterval(this.interval);
-            console.log('Gossip protocol stopped');
+            console.log('Gossip protocol monitor stopped');
         }
     }
 
     async pingAllNodes() {
-        for (const [nodeId, url] of this.cache.nodeUrls) {
+        let updated = false;
+        
+        // 1. Find nodes we think are active
+        const activeNodes = [...this.cache.nodeUrls.keys()].filter(id => !this.deadNodes.has(id));
+        
+        // Shuffle active nodes to query one at random
+        const shuffled = activeNodes.sort(() => Math.random() - 0.5);
+        
+        for (const nodeId of shuffled) {
+            const url = this.cache.nodeUrls.get(nodeId);
             try {
-                const response = await fetch(
-                    `${url}/health`,
-                    { signal: AbortSignal.timeout(1000) } // 1 sec timeout
-                );
-
+                const response = await fetch(`${url}/gossip/status`, { signal: AbortSignal.timeout(1000) });
                 if (response.ok) {
-                    this.onNodeAlive(nodeId);
-                } else {
+                    const data = await response.json();
+                    this.processGossipMembership(data.membership);
+                    updated = true;
+                    break;
+                }
+            } catch (err) {
+                // Try next node
+            }
+        }
+        
+        // 2. If we couldn't get gossip from any active node (bootstrap phase or total crash),
+        // poll health directly
+        if (!updated) {
+            for (const [nodeId, url] of this.cache.nodeUrls) {
+                try {
+                    const response = await fetch(
+                        `${url}/health`,
+                        { signal: AbortSignal.timeout(1000) }
+                    );
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.nodeMetrics.set(nodeId, data.metrics);
+                        this.nodeSizes.set(nodeId, data.size);
+                        this.onNodeAlive(nodeId);
+                    } else {
+                        this.recordMissedBeat(nodeId);
+                    }
+                } catch {
                     this.recordMissedBeat(nodeId);
                 }
-
-            } catch {
-                this.recordMissedBeat(nodeId);
             }
+        } else {
+            // Fetch metrics and size of active nodes to keep dashboard updated
+            for (const [nodeId, url] of this.cache.nodeUrls) {
+                if (!this.deadNodes.has(nodeId)) {
+                    try {
+                        const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1000) });
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.nodeMetrics.set(nodeId, data.metrics);
+                            this.nodeSizes.set(nodeId, data.size);
+                        }
+                    } catch (err) {
+                        // ignore
+                    }
+                }
+            }
+        }
+    }
+
+    processGossipMembership(membershipList) {
+        for (const item of membershipList) {
+            const nodeId = item.nodeId;
+            const wasDead = this.deadNodes.has(nodeId);
+            const isAlive = item.alive;
+            
+            if (isAlive && wasDead) {
+                this.onNodeAlive(nodeId);
+            } else if (!isAlive && !wasDead) {
+                this.onNodeDead(nodeId);
+            }
+        }
+    }
+
+    async triggerRebalance() {
+        try {
+            console.log("Triggering auto-rebalance due to membership change...");
+            await this.rebalancer.rebalance();
+        } catch (err) {
+            console.error("Auto-rebalance failed:", err.message);
         }
     }
 
@@ -73,6 +146,7 @@ class GossipManager {
         console.log(
             `🔄 Ring updated — active nodes: ${this.getActiveNodes()}`
         );
+        this.triggerRebalance();
     }
 
     onNodeRevived(nodeId) {
@@ -85,6 +159,7 @@ class GossipManager {
         console.log(
             `🔄 Ring updated — active nodes: ${this.getActiveNodes()}`
         );
+        this.triggerRebalance();
     }
 
     getActiveNodes() {
@@ -95,6 +170,7 @@ class GossipManager {
     getDeadNodes() {
         return [...this.deadNodes];
     }
+    
     getClusterStatus() {
         const status = [];
 
@@ -103,7 +179,9 @@ class GossipManager {
                 nodeId,
                 url,
                 alive: !this.deadNodes.has(nodeId),
-                missedBeats: this.missedBeats.get(nodeId) || 0
+                missedBeats: this.missedBeats.get(nodeId) || 0,
+                metrics: this.nodeMetrics.get(nodeId) || null,
+                size: this.nodeSizes.get(nodeId) || 0
             });
         }
 
