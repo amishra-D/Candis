@@ -9,17 +9,19 @@ async function createCacheNodeServer(nodeId, port, allPeers = []) {
         const app = express();
         app.use(express.json());
 
-        // CORS — internal nodes; mirror the coordination server's allowlist
-        const ALLOWED_ORIGINS = [
-            process.env.FRONTEND_URL,
-            'http://localhost:5173',
-            'http://localhost:5174',
-            
-        ].filter(Boolean);
+        // CORS — matches all *.vercel.app origins and localhost
+        const CUSTOM_ORIGIN = process.env.FRONTEND_URL;
+        function isAllowedOrigin(origin) {
+            if (!origin) return false;
+            if (origin === CUSTOM_ORIGIN) return true;
+            if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+            if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return true;
+            return false;
+        }
 
         app.use((req, res, next) => {
             const origin = req.headers.origin;
-            if (origin && ALLOWED_ORIGINS.includes(origin)) {
+            if (isAllowedOrigin(origin)) {
                 res.setHeader('Access-Control-Allow-Origin', origin);
             }
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');

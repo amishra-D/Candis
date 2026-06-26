@@ -7,18 +7,23 @@ const murmurhash = require('murmurhash');
 const app = express();
 app.use(express.json());
 
-// CORS — allowed origins:
-//   FRONTEND_URL env var  →  your Vercel deployment URL  (set this on Render)
-//   localhost:5173 / 5174 →  local Vite dev server (always allowed)
-const ALLOWED_ORIGINS = [
-    process.env.FRONTEND_URL,          // e.g. https://candis.vercel.app
-    'http://localhost:5173',
-    'http://localhost:5174',
-].filter(Boolean);                     // drop undefined if FRONTEND_URL not set
+// CORS origin checker
+// - Allows all *.vercel.app origins (production + every preview deployment)
+// - Allows FRONTEND_URL env var for custom domains
+// - Always allows localhost for local dev
+const CUSTOM_ORIGIN = process.env.FRONTEND_URL; // e.g. https://mycustomdomain.com
+
+function isAllowedOrigin(origin) {
+    if (!origin) return false;
+    if (origin === CUSTOM_ORIGIN) return true;
+    if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+    if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin)) return true;
+    return false;
+}
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
