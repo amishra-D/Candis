@@ -7,11 +7,23 @@ const murmurhash = require('murmurhash');
 const app = express();
 app.use(express.json());
 
-// CORS Headers middleware
+// CORS — allowed origins:
+//   FRONTEND_URL env var  →  your Vercel deployment URL  (set this on Render)
+//   localhost:5173 / 5174 →  local Vite dev server (always allowed)
+const ALLOWED_ORIGINS = [
+    process.env.FRONTEND_URL,          // e.g. https://candis.vercel.app
+    'http://localhost:5173',
+    'http://localhost:5174',
+].filter(Boolean);                     // drop undefined if FRONTEND_URL not set
+
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Vary', 'Origin');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
