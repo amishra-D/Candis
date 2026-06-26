@@ -2,7 +2,7 @@ const express = require('express');
 const CacheNode = require('./Cache/CacheNodes');
 const MerkleTree = require('./DS/MerkelTree');
 
-function createCacheNodeServer(nodeId, port, allPeers = []) {
+async function createCacheNodeServer(nodeId, port, allPeers = []) {
     const app = reportAppAndServer(nodeId, port);
     
     function reportAppAndServer(nodeId, port) {
@@ -23,6 +23,13 @@ function createCacheNodeServer(nodeId, port, allPeers = []) {
 
     const cacheNode = new CacheNode(nodeId);
 
+try {
+    await cacheNode.initialize();
+    console.log(`[RECOVERY] ${nodeId} recovered successfully.`);
+} catch (err) {
+    console.error(`[RECOVERY] Failed to recover ${nodeId}:`, err);
+    throw err;
+}
     const membership = new Map();
     allPeers.forEach(peer => {
         membership.set(peer.nodeId, {
@@ -137,23 +144,23 @@ function createCacheNodeServer(nodeId, port, allPeers = []) {
     });
 
     app.get('/cache/:key', (req, res) => {
-        const entry = cacheNode.storage.get(req.params.key);
-        if (!entry || entry.expiryTime <= Date.now()) {
+        const val = cacheNode.get(req.params.key);
+        if (val === null) {
             return res
                 .status(404)
                 .json({
-                    message: 'Not Found'
+                    message: 'Not Found',
+                    nodeId
                 });
         }
-        // Touch key to update hits, LRU queue, and hits metrics
-        cacheNode.get(req.params.key);
+        const entry = cacheNode.storage.get(req.params.key);
         res.json({
             nodeId,
-            value: entry.value,
-            createdAt: entry.createdAt,
-            expiryTime: entry.expiryTime,
-            ttlRemaining: entry.expiryTime === Infinity ? null : Math.max(0, entry.expiryTime - Date.now()),
-            hits: entry.hits,
+            value: val,
+            createdAt: entry ? entry.createdAt : null,
+            expiryTime: entry ? entry.expiryTime : null,
+            ttlRemaining: entry ? (entry.expiryTime === Infinity ? null : Math.max(0, entry.expiryTime - Date.now())) : null,
+            hits: entry ? entry.hits : 0,
         });
     });
 

@@ -29,10 +29,8 @@ class GossipManager {
     async pingAllNodes() {
         let updated = false;
         
-        // 1. Find nodes we think are active
         const activeNodes = [...this.cache.nodeUrls.keys()].filter(id => !this.deadNodes.has(id));
         
-        // Shuffle active nodes to query one at random
         const shuffled = activeNodes.sort(() => Math.random() - 0.5);
         
         for (const nodeId of shuffled) {
@@ -46,12 +44,9 @@ class GossipManager {
                     break;
                 }
             } catch (err) {
-                // Try next node
+                console.log(err);
             }
         }
-        
-        // 2. If we couldn't get gossip from any active node (bootstrap phase or total crash),
-        // poll health directly
         if (!updated) {
             for (const [nodeId, url] of this.cache.nodeUrls) {
                 try {
@@ -73,7 +68,6 @@ class GossipManager {
                 }
             }
         } else {
-            // Fetch metrics and size of active nodes to keep dashboard updated
             for (const [nodeId, url] of this.cache.nodeUrls) {
                 if (!this.deadNodes.has(nodeId)) {
                     try {
@@ -84,7 +78,7 @@ class GossipManager {
                             this.nodeSizes.set(nodeId, data.size);
                         }
                     } catch (err) {
-                        // ignore
+                         console.log("Error fetching metrics ", err)
                     }
                 }
             }

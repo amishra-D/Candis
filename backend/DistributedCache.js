@@ -89,14 +89,16 @@ class DistributedCache {
         const replicationNodes = this.hashRing.getReplicationNodes(key, this.replicationFactor);
         if (replicationNodes.length === 0) return { value: null, servedByNodeId: null };
 
-        // Fetch from all replica nodes in parallel
         const readPromises = replicationNodes.map(async (node) => {
             const url = this.nodeUrls.get(node.nodeId);
             try {
                 const response = await fetch(`${url}/cache/${key}`, { signal: AbortSignal.timeout(1000) });
                 if (response.ok) {
                     const data = await response.json();
-                    return { success: true, nodeId: node.nodeId, data };
+                    return { success: true, nodeId: node.nodeId, data, found: true };
+                } else if (response.status === 404) {
+                    const data = await response.json();
+                    return { success: true, nodeId: node.nodeId, data: { value: null, ...data }, found: false };
                 }
                 return { success: false, nodeId: node.nodeId };
             } catch (err) {
@@ -111,11 +113,22 @@ class DistributedCache {
             throw new Error(`Read consistency failed. Required=${requiredReads}, Received=${successfulReads.length}`);
         }
 
-        // Conflict Resolution: Latest write wins (LWW) based on createdAt timestamp
-        successfulReads.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
-        const latestEntry = successfulReads[0];
+        const foundReads = successfulReads.filter(res => res.found);
 
-        // Active Read Repair: Check if any replica has an older version or is missing the key
+        if (foundReads.length === 0) {
+            return {
+                value: null,
+                servedByNodeId: successfulReads[0].nodeId,
+                primaryNodeId: replicationNodes[0].nodeId,
+                isReplicaRead: false,
+                consistency: r,
+                receivedReads: successfulReads.length
+            };
+        }
+
+        foundReads.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
+        const latestEntry = foundReads[0];
+
         const latestTimestamp = latestEntry.data.createdAt || 0;
         const staleOrMissingReplicas = results.filter(res => {
             if (!res.success) return true;
