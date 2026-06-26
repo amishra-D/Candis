@@ -1,0 +1,7 @@
+node_modules
+data/
+*.wal
+*-snapshot.json
+.git
+.env
+npm-debug.log

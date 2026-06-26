@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  candis-backend:
+    build: .
+    ports:
+      - "3000:3000"
+      - "5001-5005:5001-5005"
+    volumes:
+      - candis-volume:/usr/src/app/data
+    environment:
+      - PERSISTENCE_DIR=/usr/src/app/data/
+
+volumes:
+  candis-volume:

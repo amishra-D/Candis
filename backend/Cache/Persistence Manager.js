@@ -1,13 +1,22 @@
 const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
 const CacheEntry = require('./CacheEntry');
+
+function getPersistencePath(nodeId, suffix) {
+    const dir = process.env.PERSISTENCE_DIR || path.join(__dirname, '..', 'data');
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    return path.join(dir, `${nodeId}${suffix}`);
+}
 
 class PersistenceManager {
     constructor(nodeId) {
         this.nodeId = nodeId;
 
         this.logStream = fs.createWriteStream(
-            `${this.nodeId}.wal`,
+            getPersistencePath(this.nodeId, '.wal'),
             { flags: 'a' }
         );
     }
@@ -36,10 +45,10 @@ class PersistenceManager {
     truncateLog() {
         this.logStream.end();
 
-        fs.truncateSync(`${this.nodeId}.wal`, 0);
+        fs.truncateSync(getPersistencePath(this.nodeId, '.wal'), 0);
 
         this.logStream = fs.createWriteStream(
-            `${this.nodeId}.wal`,
+            getPersistencePath(this.nodeId, '.wal'),
             { flags: 'a' }
         );
 
@@ -50,14 +59,14 @@ class PersistenceManager {
         const snapshot = Object.fromEntries(cache);
 
         fs.writeFileSync(
-            `${this.nodeId}-snapshot.json`,
+            getPersistencePath(this.nodeId, '-snapshot.json'),
             JSON.stringify(snapshot, null, 2)
         );
         console.log("Snapshot saved");
     }
     async recover(cacheNode) {
     const storage = cacheNode.storage;
-    const snapshotFile = `${this.nodeId}-snapshot.json`;
+    const snapshotFile = getPersistencePath(this.nodeId, '-snapshot.json');
 
     if (fs.existsSync(snapshotFile)) {
         const snapshot = JSON.parse(
@@ -80,7 +89,7 @@ class PersistenceManager {
 
         console.log(`[RECOVERY] Snapshot loaded.`);
     }
-    const walFile = `${this.nodeId}.wal`;
+    const walFile = getPersistencePath(this.nodeId, '.wal');
 
     if (!fs.existsSync(walFile)) {
         return;

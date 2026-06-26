@@ -6,11 +6,10 @@ class Rebalancer {
    }
 
    async rebalance() {
-      console.log("🔄 Running cluster rebalance...");
+      console.log("Running cluster rebalance...");
       
       const allEntries = [];
       
-      // 1. Gather all entries from all reachable nodes
       for (const [nodeId, url] of this.cache.nodeUrls) {
          try {
             const response = await fetch(`${url}/cache`, { signal: AbortSignal.timeout(1000) });
@@ -20,18 +19,15 @@ class Rebalancer {
                allEntries.push({ entry, nodeId });
             }
          } catch (err) {
-            // Node is offline, skip it
          }
       }
 
-      // 2. Process each entry to ensure correct replica placement
       for (const { entry, nodeId } of allEntries) {
          const targetNodes = this.cache.hashRing.getReplicationNodes(entry.key, this.cache.replicationFactor);
          if (targetNodes.length === 0) continue;
 
          const targetNodeIds = targetNodes.map(n => n.nodeId);
 
-         // Ensure the key is written to all target nodes (except the current one where it is already present)
          for (const targetNode of targetNodes) {
             if (targetNode.nodeId !== nodeId) {
                const targetUrl = this.cache.nodeUrls.get(targetNode.nodeId);
@@ -59,7 +55,7 @@ class Rebalancer {
             }
          }
       }
-      console.log("✅ Rebalance operation completed.");
+      console.log("Rebalance operation completed.");
    }
 }
 module.exports = Rebalancer;

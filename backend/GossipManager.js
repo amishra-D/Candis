@@ -132,13 +132,13 @@ class GossipManager {
     }
 
     onNodeDead(nodeId) {
-        console.log(`💀 Node ${nodeId} is DEAD — removing from ring`);
+        console.log(`Node ${nodeId} is DEAD — removing from ring`);
         this.deadNodes.add(nodeId);
 
         this.cache.hashRing.removecacheNode({ nodeId });
 
         console.log(
-            `🔄 Ring updated — active nodes: ${this.getActiveNodes()}`
+            `Ring updated — active nodes: ${this.getActiveNodes()}`
         );
         this.triggerRebalance();
     }
@@ -151,7 +151,7 @@ class GossipManager {
         this.cache.hashRing.addcacheNode({ nodeId });
 
         console.log(
-            `🔄 Ring updated — active nodes: ${this.getActiveNodes()}`
+            `Ring updated — active nodes: ${this.getActiveNodes()}`
         );
         this.triggerRebalance();
     }
